@@ -2,6 +2,7 @@
 
 @section('content')
 
+
 {{-- ═══════════════════════════════════
      HERO
 ════════════════════════════════════ --}}
@@ -12,7 +13,7 @@
   <h1 class="hero-title font-heading text-white leading-[.92] mb-6 opacity-0"
       style="font-size:clamp(3.5rem,10vw,8.5rem);text-shadow:0 4px 30px rgba(70,120,200,.35)">
     INVENTORY<br>
-    <span class="text-ice">SIMULATOR</span>
+    <span class="text-ice">WGG</span>
   </h1>
   <p class="hero-sub font-body text-white/70 max-w-lg leading-relaxed mb-10 opacity-0"
      style="font-size:clamp(.9rem,1.5vw,1.1rem)">
@@ -269,6 +270,7 @@
      SCRIPTS
 ════════════════════════════════════ --}}
 @push('scripts')
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <style>
   .cat-pill.cat-elektronik { color:#90c8ff; background:rgba(90,160,240,.2); border-color:rgba(90,160,240,.4); }
   .cat-pill.cat-pakaian    { color:#d8b0ff; background:rgba(200,150,240,.2); border-color:rgba(200,150,240,.4); }
@@ -410,44 +412,223 @@
     document.getElementById('editModal').classList.remove('active');
     editingId = null;
   }
-  async function saveEdit() {
+async function saveEdit() {
     const id   = document.getElementById('e-id').value;
     const name = document.getElementById('e-name').value.trim();
-    const qty  = parseInt(document.getElementById('e-qty').value) || 0;
+    const qty  = parseInt(document.getElementById('e-qty').value);
     const cat  = document.getElementById('e-cat').value;
-    const min  = parseInt(document.getElementById('e-min').value) || 5;
-    if (!name) { showToast('⚠️ Nama tidak boleh kosong!', 'warn'); return; }
+    const min  = parseInt(document.getElementById('e-min').value) || 0;
+    
+    if (!name) { 
+      Swal.fire({ icon: 'warning', title: 'Oops...', text: 'Nama tidak boleh kosong!', background: '#1e293b', color: '#fff' }); 
+      return; 
+    }
+    
     try {
-      const data = await apiFetch(`/items/${id}`, 'PUT', { name, qty, category: cat, min_stock: min });
+      // Kita pakai fetch langsung agar bisa menangkap error 422 dari Laravel
+      const response = await fetch(`/items/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          // Pastikan kamu punya tag meta csrf-token di layouts.app.blade.php kamu
+          'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+        },
+        body: JSON.stringify({ name, qty, category: cat, min_stock: min })
+      });
+
+      const data = await response.json();
+
+      // Handle kalau request gagal (contoh: stok diisi -1)
+      if (!response.ok) {
+        if (response.status === 422) {
+          // Gabungkan semua pesan error validasi dari Laravel
+          const errorMessages = Object.values(data.errors).flat().join('\n');
+          Swal.fire({ icon: 'error', title: 'Validasi Gagal', text: errorMessages, background: '#1e293b', color: '#fff' });
+        } else {
+          Swal.fire({ icon: 'error', title: 'Error', text: data.message || 'Gagal menyimpan.', background: '#1e293b', color: '#fff' });
+        }
+        return;
+      }
+
+      // Handle sukses
       if (data.success) {
         closeEditModal();
-        showToast(`✅ ${data.message}`);
-        location.reload(); // simple reload — or do DOM surgery for SPA feel
+        Swal.fire({ icon: 'success', title: 'Berhasil!', text: data.message, timer: 1500, showConfirmButton: false, background: '#1e293b', color: '#fff' });
+        
+        // Update row tabel tanpa reload!
+        updateRowInDOM(data.item);
+        refreshStats();
       }
-    } catch(e) { showToast('❌ Gagal menyimpan.', 'err'); }
+    } catch(e) { 
+      Swal.fire({ icon: 'error', title: 'Error', text: 'Terjadi kesalahan sistem.', background: '#1e293b', color: '#fff' }); 
+    }
+  }
+
+  function updateRowInDOM(item) {
+    const tr = document.querySelector(`.item-row[data-id="${item.id}"]`);
+    if (!tr) return;
+
+    // Update dataset buat fitur search/filter
+    tr.dataset.name = item.name.toLowerCase();
+    tr.dataset.cat = item.category;
+    tr.dataset.status = item.stock_status;
+
+    const statusClsMap = {
+      ok:   'text-emerald-300 bg-emerald-400/10 border-emerald-400/30',
+      warn: 'text-yellow-300  bg-yellow-400/10  border-yellow-400/30',
+      low:  'text-red-300     bg-red-400/10     border-red-400/30',
+    };
+    const fillClsMap = {
+      ok:   'bg-gradient-to-r from-emerald-400 to-teal-300',
+      warn: 'bg-gradient-to-r from-yellow-400 to-amber-300',
+      low:  'bg-gradient-to-r from-red-400 to-rose-300',
+    };
+    
+    const catCls = 'cat-' + item.category.toLowerCase();
+    const s = item.stock_status;
+    const pct = item.min_stock > 0 ? Math.min(100, Math.round(item.qty / (item.min_stock * 3) * 100)) : (item.qty > 0 ? 60 : 0);
+    
+    // Ambil nomor urut yang sudah ada supaya tidak berubah
+    const idx = tr.querySelector('td:first-child').innerText;
+
+    tr.innerHTML = `
+      <td class="px-4 py-3 text-white/35 text-xs">${idx}</td>
+      <td class="px-4 py-3 font-semibold text-white/90">${item.name}</td>
+      <td class="px-4 py-3">
+        <span class="cat-pill ${catCls} text-xs font-semibold tracking-wider px-3 py-0.5 rounded-full border">
+          ${item.category}
+        </span>
+      </td>
+      <td class="px-4 py-3">
+        <div class="flex items-center gap-2">
+          <strong class="min-w-[2rem] text-white/90">${item.qty}</strong>
+          <div class="h-1.5 rounded-full bg-white/10 overflow-hidden w-16">
+            <div class="stock-fill ${fillClsMap[s]}" style="width:${pct}%"></div>
+          </div>
+        </div>
+      </td>
+      <td class="px-4 py-3">
+        <span class="text-xs font-semibold tracking-wider px-2 py-0.5 rounded-full border ${statusClsMap[s]}">
+          ${item.stock_label}
+        </span>
+      </td>
+      <td class="px-4 py-3">
+        <div class="flex gap-2">
+          <button onclick="openEditModal(${item.id}, '${item.name.replace(/'/g,"\\'")}', ${item.qty}, '${item.category}', ${item.min_stock})"
+                  class="px-3 py-1.5 rounded-lg text-xs font-semibold tracking-wider uppercase text-white transition-all hover:-translate-y-0.5"
+                  style="background:linear-gradient(135deg,#f0c050,#d4922a);box-shadow:0 3px 10px rgba(240,192,80,.3)">
+            ✏️ Edit
+          </button>
+          <button onclick="openDeleteModal(${item.id}, '${item.name.replace(/'/g,"\\'")}')"
+                  class="px-3 py-1.5 rounded-lg text-xs font-semibold tracking-wider uppercase text-white transition-all hover:-translate-y-0.5"
+                  style="background:linear-gradient(135deg,#e07070,#c04040);box-shadow:0 3px 10px rgba(224,112,112,.3)">
+            🗑️
+          </button>
+        </div>
+      </td>
+    `;
+
+    // (Opsional) Kasih efek kedip dari GSAP supaya user sadar kalau barisnya udah di-update
+    gsap.from(tr, { backgroundColor: "rgba(255,255,255,0.15)", duration: 1 });
   }
 
   // ── DELETE MODAL ──
   let deletingId = null;
+  // function openDeleteModal(id, name) {
+  //   deletingId = id;
+  //   document.getElementById('deleteItemName').textContent = `"${name}"`;
+  //   document.getElementById('deleteModal').classList.add('active');
+  // }
+  // function closeDeleteModal() {
+  //   document.getElementById('deleteModal').classList.remove('active');
+  //   deletingId = null;
+  // }
+  // async function confirmDelete() {
+  //   try {
+  //     const data = await apiFetch(`/items/${deletingId}`, 'DELETE');
+  //     if (data.success) {
+  //       closeDeleteModal();
+  //       showToast(`🗑️ ${data.message}`);
+  //       const row = document.querySelector(`.item-row[data-id="${deletingId}"]`);
+  //       if (row) gsap.to(row, { opacity:0, x:-30, duration:.3, onComplete:() => { row.remove(); refreshStats(); }});
+  //     }
+  //   } catch(e) { showToast('❌ Gagal menghapus.', 'err'); }
+  // }
+  // ── DELETE MODAL & ACTION (PAKAI SWEETALERT2) ──
   function openDeleteModal(id, name) {
-    deletingId = id;
-    document.getElementById('deleteItemName').textContent = `"${name}"`;
-    document.getElementById('deleteModal').classList.add('active');
-  }
-  function closeDeleteModal() {
-    document.getElementById('deleteModal').classList.remove('active');
-    deletingId = null;
-  }
-  async function confirmDelete() {
-    try {
-      const data = await apiFetch(`/items/${deletingId}`, 'DELETE');
-      if (data.success) {
-        closeDeleteModal();
-        showToast(`🗑️ ${data.message}`);
-        const row = document.querySelector(`.item-row[data-id="${deletingId}"]`);
-        if (row) gsap.to(row, { opacity:0, x:-30, duration:.3, onComplete:() => { row.remove(); refreshStats(); }});
+    Swal.fire({
+      title: 'Hapus Barang?',
+      text: `Yakin ingin menghapus "${name}"? Tindakan ini tidak dapat dibatalkan.`,
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#c04040', // Warna merah untuk tombol hapus
+      cancelButtonColor: '#d4922a',  // Warna kuning/orange untuk batal
+      confirmButtonText: 'Ya, Hapus!',
+      cancelButtonText: 'Batal',
+      background: '#1e293b', // Warna background gelap biar senada dengan tema
+      color: '#fff'
+    }).then(async (result) => {
+      
+      // Jika user klik "Ya, Hapus!"
+      if (result.isConfirmed) {
+        try {
+          const response = await fetch(`/items/${id}`, {
+            method: 'DELETE',
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+            }
+          });
+
+          const data = await response.json();
+
+          if (data.success) {
+            Swal.fire({
+              icon: 'success',
+              title: 'Terhapus!',
+              text: data.message,
+              timer: 1500,
+              showConfirmButton: false,
+              background: '#1e293b',
+              color: '#fff'
+            });
+
+            // Cari baris di tabel dan hapus pakai animasi GSAP!
+            const row = document.querySelector(`.item-row[data-id="${id}"]`);
+            if (row) {
+              gsap.to(row, { 
+                opacity: 0, 
+                x: -30, 
+                duration: 0.3, 
+                onComplete: () => { 
+                  row.remove(); // Hapus dari HTML
+                  refreshStats(); // Update angka statistik di atas
+                  
+                  // (Opsional) Kalau tabel kosong setelah dihapus, tampilkan teks "Belum ada barang"
+                  const tbody = document.getElementById('inventoryBody');
+                  if (tbody.querySelectorAll('.item-row').length === 0) {
+                    tbody.innerHTML = `
+                      <tr>
+                        <td colspan="6" class="px-4 py-16 text-center text-white/35">
+                          <div class="text-5xl mb-3">📦</div>
+                          <div>Belum ada barang. Tambahkan yang pertama!</div>
+                        </td>
+                      </tr>
+                    `;
+                  }
+                } 
+              });
+            }
+          } else {
+            Swal.fire({ icon: 'error', title: 'Error', text: 'Gagal menghapus barang.', background: '#1e293b', color: '#fff' });
+          }
+        } catch(e) {
+          Swal.fire({ icon: 'error', title: 'Error', text: 'Terjadi kesalahan sistem.', background: '#1e293b', color: '#fff' });
+        }
       }
-    } catch(e) { showToast('❌ Gagal menghapus.', 'err'); }
+    });
   }
 
   // ── CLOSE MODALS ON OUTSIDE CLICK ──

@@ -197,10 +197,22 @@
       <div>Tidak ada barang yang sesuai filter.</div>
     </div>
 
+    {{-- TOMBOL EXPORT EXCEL --}}
+    <div class="mt-6 flex justify-end border-t border-white/10 pt-5">
+      <button onclick="exportToExcel()"
+              class="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl font-semibold text-sm tracking-widest uppercase text-white transition-all hover:-translate-y-0.5"
+              style="background:linear-gradient(135deg,#10b981,#059669);box-shadow:0 4px 15px rgba(16,185,129,.3)">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        </svg>
+        Export ke Excel
+      </button>
+    </div>
+
   </div>
 
   {{-- ═══════════════════════════════════
-       HISTORY / LOG SECTION (BARU)
+       HISTORY / LOG SECTION
   ════════════════════════════════════ --}}
   <div class="mt-12 reveal">
     <h3 class="font-display text-2xl text-white mb-6">Riwayat Aktivitas</h3>
@@ -269,7 +281,7 @@
         <label class="text-white/60 text-xs tracking-widest uppercase font-semibold">Stok Minimum</label>
         <input id="e-min" type="number" class="wgg-input" min="0"/>
       </div>
-
+      
       {{-- INPUT NOTES BARU --}}
       <div class="flex flex-col gap-2 sm:col-span-2 mt-2">
         <label class="text-white/60 text-xs tracking-widest uppercase font-semibold">Catatan / Notes (Opsional)</label>
@@ -313,6 +325,8 @@
 ════════════════════════════════════ --}}
 @push('scripts')
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+
 <style>
   .wgg-input[type="number"] {
     /* Memaksa browser merender UI bawaan (seperti panah) ke mode gelap */
@@ -359,6 +373,43 @@
       });
     });
   });
+
+  // ── EXPORT TO EXCEL (VIA SHEETJS) ──
+  function exportToExcel() {
+    const rows = document.querySelectorAll('.item-row');
+    const data = [];
+
+    // Ambil data dari baris tabel HTML satu per satu
+    rows.forEach((row, index) => {
+      const name = row.querySelector('td:nth-child(2)').innerText.trim();
+      const cat = row.querySelector('td:nth-child(3)').innerText.trim();
+      const qty = row.querySelector('td:nth-child(4) strong').innerText.trim();
+      const status = row.querySelector('td:nth-child(5)').innerText.trim();
+
+      data.push({
+        'No': index + 1,
+        'Nama Barang': name,
+        'Kategori': cat,
+        'Jumlah Stok': parseInt(qty),
+        'Kondisi': status
+      });
+    });
+
+    // Validasi kalau tabelnya kosong
+    if(data.length === 0) {
+      Swal.fire({ icon: 'info', title: 'Data Kosong', text: 'Tidak ada data barang untuk diexport.', background: '#1e293b', color: '#fff' });
+      return;
+    }
+
+    // Buat worksheet dan workbook
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Inventory");
+
+    // Simpan file dengan format YYYY-MM-DD
+    const dateStr = new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(wb, `WGG_Inventory_${dateStr}.xlsx`);
+  }
 
   // ── PREPEND LOG OTOMATIS (REAL-TIME UI) ──
   function prependLog(name, action, notes) {
@@ -421,26 +472,46 @@
     const cat  = document.getElementById('f-cat').value;
     const min  = parseInt(document.getElementById('f-min').value) || 5;
 
-    if (!name) { showToast('⚠️ Nama barang wajib diisi!', 'warn'); return; }
-    if (!cat)  { showToast('⚠️ Pilih kategori terlebih dahulu!', 'warn'); return; }
+    if (!name) { Swal.fire({ icon: 'warning', title: 'Oops...', text: 'Nama barang wajib diisi!', background: '#1e293b', color: '#fff' }); return; }
+    if (!cat)  { Swal.fire({ icon: 'warning', title: 'Oops...', text: 'Pilih kategori terlebih dahulu!', background: '#1e293b', color: '#fff' }); return; }
 
     try {
-      const data = await apiFetch('/items', 'POST', { name, qty, category: cat, min_stock: min });
+      const response = await fetch('/items', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+        },
+        body: JSON.stringify({ name, qty, category: cat, min_stock: min })
+      });
+      
+      const data = await response.json();
+
+      if (!response.ok) {
+        if (response.status === 422) {
+          const errorMessages = Object.values(data.errors).flat().join('\n');
+          Swal.fire({ icon: 'error', title: 'Validasi Gagal', text: errorMessages, background: '#1e293b', color: '#fff' });
+        } else {
+          Swal.fire({ icon: 'error', title: 'Error', text: 'Gagal menambahkan barang.', background: '#1e293b', color: '#fff' });
+        }
+        return;
+      }
+
       if (data.success) {
-        showToast(`✅ ${data.message}`);
+        Swal.fire({ icon: 'success', title: 'Berhasil!', text: data.message, timer: 1500, showConfirmButton: false, background: '#1e293b', color: '#fff' });
         document.getElementById('f-name').value = '';
         document.getElementById('f-qty').value  = '';
         document.getElementById('f-cat').value  = '';
         document.getElementById('f-min').value  = '';
+        
         appendRow(data.item);
         refreshStats();
         
-        // Panggil Log
+        // Panggil Log Otomatis di UI
         prependLog(name, 'Barang Baru Ditambahkan', `Stok awal: ${qty} unit`);
-      } else {
-        showToast('❌ Gagal menambahkan barang.', 'err');
       }
-    } catch(e) { showToast('❌ Terjadi kesalahan.', 'err'); }
+    } catch(e) { Swal.fire({ icon: 'error', title: 'Error', text: 'Terjadi kesalahan sistem.', background: '#1e293b', color: '#fff' }); }
   }
 
   // ── APPEND ROW ──
@@ -494,7 +565,9 @@
         </div>
       </td>`;
     body.appendChild(tr);
-    gsap.from(tr, { opacity:0, y:16, duration:.4 });
+    if (typeof gsap !== 'undefined') {
+      gsap.from(tr, { opacity:0, y:16, duration:.4 });
+    }
   }
 
   // ── EDIT MODAL ──
@@ -506,13 +579,15 @@
     document.getElementById('e-qty').value  = qty;
     document.getElementById('e-cat').value  = cat;
     document.getElementById('e-min').value  = min;
-    document.getElementById('e-notes').value = ''; // Kosongkan notes tiap dibuka
+    document.getElementById('e-notes').value = ''; // Kosongkan notes saat dibuka
     document.getElementById('editModal').classList.add('active');
   }
+
   function closeEditModal() {
     document.getElementById('editModal').classList.remove('active');
     editingId = null;
   }
+
   async function saveEdit() {
     const id   = document.getElementById('e-id').value;
     const name = document.getElementById('e-name').value.trim();
@@ -526,7 +601,6 @@
       return; 
     }
 
-    // Cek stok lama buat validasi di action log
     const trRow = document.querySelector(`.item-row[data-id="${id}"]`);
     const oldQty = trRow ? parseInt(trRow.querySelector('strong').innerText) : qty;
     
@@ -538,7 +612,7 @@
           'Accept': 'application/json',
           'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
         },
-        body: JSON.stringify({ name, qty, category: cat, min_stock: min, notes: notes }) // Kirim notes
+        body: JSON.stringify({ name, qty, category: cat, min_stock: min, notes: notes })
       });
 
       const data = await response.json();
@@ -631,7 +705,9 @@
       </td>
     `;
 
-    gsap.from(tr, { backgroundColor: "rgba(255,255,255,0.15)", duration: 1 });
+    if (typeof gsap !== 'undefined') {
+      gsap.from(tr, { backgroundColor: "rgba(255,255,255,0.15)", duration: 1 });
+    }
   }
 
   // ── DELETE MODAL & ACTION (PAKAI SWEETALERT2) ──
@@ -674,30 +750,32 @@
 
             const row = document.querySelector(`.item-row[data-id="${id}"]`);
             if (row) {
-              gsap.to(row, { 
-                opacity: 0, 
-                x: -30, 
-                duration: 0.3, 
-                onComplete: () => { 
-                  row.remove(); 
-                  refreshStats(); 
-                  
-                  // Panggil Log Otomatis di UI
-                  prependLog(name, 'Barang Dihapus', 'Data barang telah dihapus permanen dari sistem');
+              if (typeof gsap !== 'undefined') {
+                gsap.to(row, { 
+                  opacity: 0, 
+                  x: -30, 
+                  duration: 0.3, 
+                  onComplete: () => { 
+                    row.remove(); 
+                    refreshStats(); 
+                    
+                    // Panggil Log Otomatis di UI
+                    prependLog(name, 'Barang Dihapus', 'Data barang telah dihapus permanen dari sistem');
 
-                  const tbody = document.getElementById('inventoryBody');
-                  if (tbody.querySelectorAll('.item-row').length === 0) {
-                    tbody.innerHTML = `
-                      <tr>
-                        <td colspan="6" class="px-4 py-16 text-center text-white/35">
-                          <div class="text-5xl mb-3">📦</div>
-                          <div>Belum ada barang. Tambahkan yang pertama!</div>
-                        </td>
-                      </tr>
-                    `;
-                  }
-                } 
-              });
+                    const tbody = document.getElementById('inventoryBody');
+                    if (tbody.querySelectorAll('.item-row').length === 0) {
+                      tbody.innerHTML = `
+                        <tr>
+                          <td colspan="6" class="px-4 py-16 text-center text-white/35">
+                            <div class="text-5xl mb-3">📦</div>
+                            <div>Belum ada barang. Tambahkan yang pertama!</div>
+                          </td>
+                        </tr>
+                      `;
+                    }
+                  } 
+                });
+              }
             }
           } else {
             Swal.fire({ icon: 'error', title: 'Error', text: 'Gagal menghapus barang.', background: '#1e293b', color: '#fff' });
@@ -716,11 +794,18 @@
   // ── REFRESH STATS VIA API ──
   async function refreshStats() {
     try {
-      const s = await apiFetch('/items/stats');
+      const response = await fetch('/items/stats', { headers: { 'Accept': 'application/json' } });
+      const s = await response.json();
       const vals = [s.total, s.total_qty, s.ok, s.warn, s.low];
       vals.forEach((v, i) => {
         const el = document.getElementById(`stat-${i}`);
-        if (el) { gsap.to(el, { innerText: v, duration:.6, snap:{innerText:1}, ease:'power1.out' }); }
+        if (el) { 
+          if (typeof gsap !== 'undefined') {
+            gsap.to(el, { innerText: v, duration:.6, snap:{innerText:1}, ease:'power1.out' }); 
+          } else {
+            el.innerText = v;
+          }
+        }
       });
     } catch(e) {}
   }

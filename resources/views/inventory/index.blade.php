@@ -2,7 +2,6 @@
 
 @section('content')
 
-
 {{-- ═══════════════════════════════════
      HERO
 ════════════════════════════════════ --}}
@@ -170,12 +169,12 @@
                 <button onclick="openEditModal({{ $item->id }}, '{{ addslashes($item->name) }}', {{ $item->qty }}, '{{ $item->category }}', {{ $item->min_stock }})"
                         class="px-3 py-1.5 rounded-lg text-xs font-semibold tracking-wider uppercase text-white transition-all hover:-translate-y-0.5"
                         style="background:linear-gradient(135deg,#f0c050,#d4922a);box-shadow:0 3px 10px rgba(240,192,80,.3)">
-                  ✏️ Edit
+                  Edit
                 </button>
                 <button onclick="openDeleteModal({{ $item->id }}, '{{ addslashes($item->name) }}')"
                         class="px-3 py-1.5 rounded-lg text-xs font-semibold tracking-wider uppercase text-white transition-all hover:-translate-y-0.5"
                         style="background:linear-gradient(135deg,#e07070,#c04040);box-shadow:0 3px 10px rgba(224,112,112,.3)">
-                  🗑️
+                  Hapus
                 </button>
               </div>
             </td>
@@ -199,6 +198,42 @@
     </div>
 
   </div>
+
+  {{-- ═══════════════════════════════════
+       HISTORY / LOG SECTION (BARU)
+  ════════════════════════════════════ --}}
+  <div class="mt-12 reveal">
+    <h3 class="font-display text-2xl text-white mb-6">Riwayat Aktivitas</h3>
+    <div class="glass rounded-2xl p-6 max-h-[400px] overflow-y-auto" id="logContainer">
+      @if(isset($logs) && $logs->count() > 0)
+        <div class="relative border-l border-white/20 ml-3 pl-6 space-y-6" id="logList">
+          @foreach($logs as $log)
+          <div class="relative log-item">
+            <div class="absolute -left-[31px] top-1.5 w-3 h-3 rounded-full {{ str_contains($log->action, 'Hapus') ? 'bg-red-400' : (str_contains($log->action, 'Baru') ? 'bg-sky' : 'bg-emerald-400') }} shadow-[0_0_8px_currentColor]"></div>
+            
+            <div class="flex flex-col sm:flex-row sm:items-baseline gap-1 sm:gap-3 mb-1">
+              <span class="font-semibold text-white/90 text-sm">{{ $log->item_name }}</span>
+              <span class="text-white/40 text-[10px] tracking-wider uppercase">{{ $log->created_at->diffForHumans() }} &middot; {{ $log->created_at->format('d M Y, H:i') }}</span>
+            </div>
+            
+            <div class="text-xs font-semibold px-2 py-0.5 rounded border inline-block mb-2 
+              {{ str_contains($log->action, 'Hapus') ? 'text-red-300 bg-red-400/10 border-red-400/30' : (str_contains($log->action, 'Baru') ? 'text-sky/90 bg-sky/10 border-sky/30' : 'text-emerald-300 bg-emerald-400/10 border-emerald-400/30') }}">
+              {{ $log->action }}
+            </div>
+            
+            <p class="text-white/60 text-sm leading-relaxed">"{{ $log->notes }}"</p>
+          </div>
+          @endforeach
+        </div>
+      @else
+        <div id="emptyLog" class="text-center py-8 text-white/35">
+          <div class="text-4xl mb-3">🕒</div>
+          <div>Belum ada riwayat aktivitas.</div>
+        </div>
+      @endif
+    </div>
+  </div>
+
 </section>
 
 @endsection
@@ -234,6 +269,13 @@
         <label class="text-white/60 text-xs tracking-widest uppercase font-semibold">Stok Minimum</label>
         <input id="e-min" type="number" class="wgg-input" min="0"/>
       </div>
+
+      {{-- INPUT NOTES BARU --}}
+      <div class="flex flex-col gap-2 sm:col-span-2 mt-2">
+        <label class="text-white/60 text-xs tracking-widest uppercase font-semibold">Catatan / Notes (Opsional)</label>
+        <textarea id="e-notes" class="wgg-input resize-none h-20" placeholder="Kenapa diubah? (cth. Barang rusak, restock bulanan...)"></textarea>
+      </div>
+
     </div>
     <div class="flex justify-end gap-3">
       <button onclick="closeEditModal()"
@@ -318,6 +360,43 @@
     });
   });
 
+  // ── PREPEND LOG OTOMATIS (REAL-TIME UI) ──
+  function prependLog(name, action, notes) {
+    const container = document.getElementById('logContainer');
+    const emptyState = document.getElementById('emptyLog');
+    if(emptyState) emptyState.remove();
+
+    const date = new Date();
+    const timeString = date.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+    const dateString = date.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
+
+    let colorCls = 'text-emerald-300 bg-emerald-400/10 border-emerald-400/30';
+    let dotCls = 'bg-emerald-400';
+    if(action.includes('Hapus')) { colorCls = 'text-red-300 bg-red-400/10 border-red-400/30'; dotCls = 'bg-red-400'; }
+    else if(action.includes('Baru')) { colorCls = 'text-sky/90 bg-sky/10 border-sky/30'; dotCls = 'bg-sky'; }
+
+    const div = document.createElement('div');
+    div.className = 'relative log-item';
+    div.innerHTML = `
+      <div class="absolute -left-[31px] top-1.5 w-3 h-3 rounded-full ${dotCls} shadow-[0_0_8px_currentColor]"></div>
+      <div class="flex flex-col sm:flex-row sm:items-baseline gap-1 sm:gap-3 mb-1">
+        <span class="font-semibold text-white/90 text-sm">${name}</span>
+        <span class="text-white/40 text-[10px] tracking-wider uppercase">Baru saja &middot; ${dateString}, ${timeString}</span>
+      </div>
+      <div class="text-xs font-semibold px-2 py-0.5 rounded border inline-block mb-2 ${colorCls}">
+        ${action}
+      </div>
+      <p class="text-white/60 text-sm leading-relaxed">"${notes || 'Tanpa catatan'}"</p>
+    `;
+
+    if(!container.querySelector('.space-y-6')) {
+       container.innerHTML = `<div class="relative border-l border-white/20 ml-3 pl-6 space-y-6" id="logList"></div>`;
+    }
+    
+    document.getElementById('logList').prepend(div);
+    if(typeof gsap !== 'undefined') gsap.from(div, { opacity: 0, x: -20, duration: 0.5 });
+  }
+
   // ── FILTER TABLE ──
   function filterTable() {
     const q  = document.getElementById('searchInput').value.toLowerCase();
@@ -355,6 +434,9 @@
         document.getElementById('f-min').value  = '';
         appendRow(data.item);
         refreshStats();
+        
+        // Panggil Log
+        prependLog(name, 'Barang Baru Ditambahkan', `Stok awal: ${qty} unit`);
       } else {
         showToast('❌ Gagal menambahkan barang.', 'err');
       }
@@ -364,7 +446,6 @@
   // ── APPEND ROW ──
   function appendRow(item) {
     const body = document.getElementById('inventoryBody');
-    // remove empty placeholder if exists
     const placeholder = body.querySelector('td[colspan]');
     if (placeholder) placeholder.closest('tr').remove();
 
@@ -407,7 +488,7 @@
           <button onclick="openEditModal(${item.id},'${item.name.replace(/'/g,"\\'")}',${item.qty},'${item.category}',${item.min_stock})"
                   class="px-3 py-1.5 rounded-lg text-xs font-semibold tracking-wider uppercase text-white hover:-translate-y-0.5 transition-all"
                   style="background:linear-gradient(135deg,#f0c050,#d4922a)">✏️ Edit</button>
-          <button onclick="openDeleteModal(${item.id},'${item.name.replace(/'/g,"\\'")}'')"
+          <button onclick="openDeleteModal(${item.id},'${item.name.replace(/'/g,"\\'")}')"
                   class="px-3 py-1.5 rounded-lg text-xs font-semibold tracking-wider uppercase text-white hover:-translate-y-0.5 transition-all"
                   style="background:linear-gradient(135deg,#e07070,#c04040)">🗑️</button>
         </div>
@@ -425,43 +506,45 @@
     document.getElementById('e-qty').value  = qty;
     document.getElementById('e-cat').value  = cat;
     document.getElementById('e-min').value  = min;
+    document.getElementById('e-notes').value = ''; // Kosongkan notes tiap dibuka
     document.getElementById('editModal').classList.add('active');
   }
   function closeEditModal() {
     document.getElementById('editModal').classList.remove('active');
     editingId = null;
   }
-async function saveEdit() {
+  async function saveEdit() {
     const id   = document.getElementById('e-id').value;
     const name = document.getElementById('e-name').value.trim();
     const qty  = parseInt(document.getElementById('e-qty').value);
     const cat  = document.getElementById('e-cat').value;
     const min  = parseInt(document.getElementById('e-min').value) || 0;
+    const notes = document.getElementById('e-notes').value.trim(); // Ambil notes
     
     if (!name) { 
       Swal.fire({ icon: 'warning', title: 'Oops...', text: 'Nama tidak boleh kosong!', background: '#1e293b', color: '#fff' }); 
       return; 
     }
+
+    // Cek stok lama buat validasi di action log
+    const trRow = document.querySelector(`.item-row[data-id="${id}"]`);
+    const oldQty = trRow ? parseInt(trRow.querySelector('strong').innerText) : qty;
     
     try {
-      // Kita pakai fetch langsung agar bisa menangkap error 422 dari Laravel
       const response = await fetch(`/items/${id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
-          // Pastikan kamu punya tag meta csrf-token di layouts.app.blade.php kamu
           'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
         },
-        body: JSON.stringify({ name, qty, category: cat, min_stock: min })
+        body: JSON.stringify({ name, qty, category: cat, min_stock: min, notes: notes }) // Kirim notes
       });
 
       const data = await response.json();
 
-      // Handle kalau request gagal (contoh: stok diisi -1)
       if (!response.ok) {
         if (response.status === 422) {
-          // Gabungkan semua pesan error validasi dari Laravel
           const errorMessages = Object.values(data.errors).flat().join('\n');
           Swal.fire({ icon: 'error', title: 'Validasi Gagal', text: errorMessages, background: '#1e293b', color: '#fff' });
         } else {
@@ -470,14 +553,17 @@ async function saveEdit() {
         return;
       }
 
-      // Handle sukses
       if (data.success) {
         closeEditModal();
         Swal.fire({ icon: 'success', title: 'Berhasil!', text: data.message, timer: 1500, showConfirmButton: false, background: '#1e293b', color: '#fff' });
         
-        // Update row tabel tanpa reload!
         updateRowInDOM(data.item);
         refreshStats();
+
+        // Panggil Log Otomatis di UI
+        let actionText = 'Data Diperbarui';
+        if (oldQty !== qty) actionText = `Update Stok (${oldQty} ➔ ${qty})`;
+        prependLog(name, actionText, notes || 'Tanpa catatan');
       }
     } catch(e) { 
       Swal.fire({ icon: 'error', title: 'Error', text: 'Terjadi kesalahan sistem.', background: '#1e293b', color: '#fff' }); 
@@ -488,7 +574,6 @@ async function saveEdit() {
     const tr = document.querySelector(`.item-row[data-id="${item.id}"]`);
     if (!tr) return;
 
-    // Update dataset buat fitur search/filter
     tr.dataset.name = item.name.toLowerCase();
     tr.dataset.cat = item.category;
     tr.dataset.status = item.stock_status;
@@ -507,8 +592,6 @@ async function saveEdit() {
     const catCls = 'cat-' + item.category.toLowerCase();
     const s = item.stock_status;
     const pct = item.min_stock > 0 ? Math.min(100, Math.round(item.qty / (item.min_stock * 3) * 100)) : (item.qty > 0 ? 60 : 0);
-    
-    // Ambil nomor urut yang sudah ada supaya tidak berubah
     const idx = tr.querySelector('td:first-child').innerText;
 
     tr.innerHTML = `
@@ -548,32 +631,9 @@ async function saveEdit() {
       </td>
     `;
 
-    // (Opsional) Kasih efek kedip dari GSAP supaya user sadar kalau barisnya udah di-update
     gsap.from(tr, { backgroundColor: "rgba(255,255,255,0.15)", duration: 1 });
   }
 
-  // ── DELETE MODAL ──
-  let deletingId = null;
-  // function openDeleteModal(id, name) {
-  //   deletingId = id;
-  //   document.getElementById('deleteItemName').textContent = `"${name}"`;
-  //   document.getElementById('deleteModal').classList.add('active');
-  // }
-  // function closeDeleteModal() {
-  //   document.getElementById('deleteModal').classList.remove('active');
-  //   deletingId = null;
-  // }
-  // async function confirmDelete() {
-  //   try {
-  //     const data = await apiFetch(`/items/${deletingId}`, 'DELETE');
-  //     if (data.success) {
-  //       closeDeleteModal();
-  //       showToast(`🗑️ ${data.message}`);
-  //       const row = document.querySelector(`.item-row[data-id="${deletingId}"]`);
-  //       if (row) gsap.to(row, { opacity:0, x:-30, duration:.3, onComplete:() => { row.remove(); refreshStats(); }});
-  //     }
-  //   } catch(e) { showToast('❌ Gagal menghapus.', 'err'); }
-  // }
   // ── DELETE MODAL & ACTION (PAKAI SWEETALERT2) ──
   function openDeleteModal(id, name) {
     Swal.fire({
@@ -581,15 +641,13 @@ async function saveEdit() {
       text: `Yakin ingin menghapus "${name}"? Tindakan ini tidak dapat dibatalkan.`,
       icon: 'warning',
       showCancelButton: true,
-      confirmButtonColor: '#c04040', // Warna merah untuk tombol hapus
-      cancelButtonColor: '#d4922a',  // Warna kuning/orange untuk batal
+      confirmButtonColor: '#c04040',
+      cancelButtonColor: '#d4922a',
       confirmButtonText: 'Ya, Hapus!',
       cancelButtonText: 'Batal',
-      background: '#1e293b', // Warna background gelap biar senada dengan tema
+      background: '#1e293b',
       color: '#fff'
     }).then(async (result) => {
-      
-      // Jika user klik "Ya, Hapus!"
       if (result.isConfirmed) {
         try {
           const response = await fetch(`/items/${id}`, {
@@ -614,7 +672,6 @@ async function saveEdit() {
               color: '#fff'
             });
 
-            // Cari baris di tabel dan hapus pakai animasi GSAP!
             const row = document.querySelector(`.item-row[data-id="${id}"]`);
             if (row) {
               gsap.to(row, { 
@@ -622,10 +679,12 @@ async function saveEdit() {
                 x: -30, 
                 duration: 0.3, 
                 onComplete: () => { 
-                  row.remove(); // Hapus dari HTML
-                  refreshStats(); // Update angka statistik di atas
+                  row.remove(); 
+                  refreshStats(); 
                   
-                  // (Opsional) Kalau tabel kosong setelah dihapus, tampilkan teks "Belum ada barang"
+                  // Panggil Log Otomatis di UI
+                  prependLog(name, 'Barang Dihapus', 'Data barang telah dihapus permanen dari sistem');
+
                   const tbody = document.getElementById('inventoryBody');
                   if (tbody.querySelectorAll('.item-row').length === 0) {
                     tbody.innerHTML = `

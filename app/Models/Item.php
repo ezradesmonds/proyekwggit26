@@ -26,4 +26,8 @@ class Item extends Model
             default => 'Stok Aman',
         };
     }
+    public function logs()
+    {
+        return $this->hasMany(ItemLog::class);
+    }
 }

@@ -570,8 +570,10 @@
     }
   }
 
-  // ── EDIT MODAL ──
+  // ── EDIT MODAL & VALIDASI PERUBAHAN ──
   let editingId = null;
+  let initialEditState = {}; // Variabel penyimpan data awal
+
   function openEditModal(id, name, qty, cat, min) {
     editingId = id;
     document.getElementById('e-id').value   = id;
@@ -580,6 +582,15 @@
     document.getElementById('e-cat').value  = cat;
     document.getElementById('e-min').value  = min;
     document.getElementById('e-notes').value = ''; // Kosongkan notes saat dibuka
+    
+    // Simpan snapshot data sebelum diubah user
+    initialEditState = {
+      name: name,
+      qty: parseInt(qty),
+      cat: cat,
+      min: parseInt(min)
+    };
+
     document.getElementById('editModal').classList.add('active');
   }
 
@@ -594,15 +605,32 @@
     const qty  = parseInt(document.getElementById('e-qty').value);
     const cat  = document.getElementById('e-cat').value;
     const min  = parseInt(document.getElementById('e-min').value) || 0;
-    const notes = document.getElementById('e-notes').value.trim(); // Ambil notes
+    const notes = document.getElementById('e-notes').value.trim();
     
     if (!name) { 
       Swal.fire({ icon: 'warning', title: 'Oops...', text: 'Nama tidak boleh kosong!', background: '#1e293b', color: '#fff' }); 
       return; 
     }
 
-    const trRow = document.querySelector(`.item-row[data-id="${id}"]`);
-    const oldQty = trRow ? parseInt(trRow.querySelector('strong').innerText) : qty;
+    // CEK APAKAH ADA PERUBAHAN DATA
+    if (
+      name === initialEditState.name &&
+      qty === initialEditState.qty &&
+      cat === initialEditState.cat &&
+      min === initialEditState.min
+    ) {
+      // Jika data sama persis, hentikan proses (jangan fetch ke backend)
+      Swal.fire({ 
+        icon: 'info', 
+        title: 'Tidak Ada Perubahan', 
+        text: 'Data barang tidak ada yang diubah.', 
+        background: '#1e293b', 
+        color: '#fff',
+        timer: 2000,
+        showConfirmButton: false
+      });
+      return; 
+    }
     
     try {
       const response = await fetch(`/items/${id}`, {
@@ -636,7 +664,9 @@
 
         // Panggil Log Otomatis di UI
         let actionText = 'Data Diperbarui';
-        if (oldQty !== qty) actionText = `Update Stok (${oldQty} ➔ ${qty})`;
+        if (initialEditState.qty !== qty) {
+          actionText = `Update Stok (${initialEditState.qty} ➔ ${qty})`;
+        }
         prependLog(name, actionText, notes || 'Tanpa catatan');
       }
     } catch(e) { 
@@ -694,12 +724,12 @@
           <button onclick="openEditModal(${item.id}, '${item.name.replace(/'/g,"\\'")}', ${item.qty}, '${item.category}', ${item.min_stock})"
                   class="px-3 py-1.5 rounded-lg text-xs font-semibold tracking-wider uppercase text-white transition-all hover:-translate-y-0.5"
                   style="background:linear-gradient(135deg,#f0c050,#d4922a);box-shadow:0 3px 10px rgba(240,192,80,.3)">
-            ✏️ Edit
+            Edit
           </button>
           <button onclick="openDeleteModal(${item.id}, '${item.name.replace(/'/g,"\\'")}')"
                   class="px-3 py-1.5 rounded-lg text-xs font-semibold tracking-wider uppercase text-white transition-all hover:-translate-y-0.5"
                   style="background:linear-gradient(135deg,#e07070,#c04040);box-shadow:0 3px 10px rgba(224,112,112,.3)">
-            🗑️
+            Hapus
           </button>
         </div>
       </td>

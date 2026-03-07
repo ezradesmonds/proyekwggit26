@@ -17,12 +17,12 @@
   </h1>
   <p class="hero-sub font-body text-white/70 max-w-lg leading-relaxed mb-10 opacity-0"
      style="font-size:clamp(.9rem,1.5vw,1.1rem)">
-    Kelola stok barang secara realtime. Tambah, edit, dan hapus data inventory dengan mudah bersama WGG 2026.
+    Kelola stok barang secara realtime. Tambah, edit, dan hapus data inventory.
   </p>
   <a href="#inventory"
      class="hero-cta inline-flex items-center gap-2 opacity-0 w-fit px-8 py-3 rounded-full font-semibold text-sm tracking-widest uppercase text-white transition-all duration-200 hover:-translate-y-1"
      style="background:linear-gradient(135deg,#7ec8e3,#4a7fb5);box-shadow:0 6px 28px rgba(80,160,230,.4)">
-    🧊 Lihat Inventory
+    Lihat Inventory
   </a>
   <div class="absolute right-[6vw] bottom-[10vh] font-heading text-white/10 tracking-[.15em]"
        style="font-size:7rem;writing-mode:vertical-rl">2026</div>
@@ -272,6 +272,25 @@
 @push('scripts')
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <style>
+  .wgg-input[type="number"] {
+    /* Memaksa browser merender UI bawaan (seperti panah) ke mode gelap */
+    color-scheme: dark;
+  }
+
+  /* Modifikasi panah untuk browser berbasis WebKit (Chrome, Edge, Safari) */
+  .wgg-input[type="number"]::-webkit-inner-spin-button,
+  .wgg-input[type="number"]::-webkit-outer-spin-button {
+    cursor: pointer;
+    opacity: 0.5; /* Bikin agak transparan biar nge-blend */
+    transition: opacity 0.2s ease;
+  }
+
+  /* Saat di-hover, panahnya jadi lebih terang */
+  .wgg-input[type="number"]::-webkit-inner-spin-button:hover,
+  .wgg-input[type="number"]::-webkit-outer-spin-button:hover {
+    opacity: 1;
+  }
+
   .cat-pill.cat-elektronik { color:#90c8ff; background:rgba(90,160,240,.2); border-color:rgba(90,160,240,.4); }
   .cat-pill.cat-pakaian    { color:#d8b0ff; background:rgba(200,150,240,.2); border-color:rgba(200,150,240,.4); }
   .cat-pill.cat-makanan    { color:#70eeb0; background:rgba(100,220,160,.18); border-color:rgba(100,220,160,.4); }
